@@ -1,0 +1,26 @@
+Parts list for Rover V3
+
+Electronics:
+1x Teensy 4.1
+2x BTS7960 motor controller
+2x 550 motor
+1x 11.1V 3s 2200mah lipo battery
+1x Any battery that outputs 3.5 - 5V to power MCU
+6x RGB leds
+1x 6 Channels RC receiver
+
+Hardware:
+2x 628 bearings
+4x 120mm/4.72 inches wheels
+__x M3 screws and nuts
+__x M4 screws and nuts
+2x 3mm to 4mm motor coupler
+
+Misc:
+Red and Black wires
+Heat Shrink tubing
+T connector / XT60 connector
+RC transmitter with 6 Channels
+Some 70x50mm protoboard
+Paper clips / any bendable metal wire
+
