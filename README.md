@@ -8,4 +8,4 @@
 - potentially implementing ardurover
 
 # Known issues for Rover 3
-- Motor will overheat
+- Motor will overheat <--- i got better motors from Pololu it no longer ovverheats
