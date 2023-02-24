@@ -1,18 +1,18 @@
 /*
   Connections:
-  BTS7960 -> Arduino Mega 2560 / Teensy 4.1
-  MotorRight_R_EN - 22 - Teensy 4.1 pin 6
-  MotorRight_L_EN - 23 - Teensy 4.1 pin 7
-  MotorLeft_R_EN - 26 - Teensy 4.1 pin 8
-  MotorLeft_L_EN - 27 - Teensy 4.1 pin 9
-  Rpwm1 - 2 - Teensy 4.1 pin 2
-  Lpwm1 - 3 - Teensy 4.1 pin 3
-  Rpwm2 - 4 - Teensy 4.1 pin 4
-  Lpwm2 - 5 - Teensy 4.1 pin 5
+  BTS7960 -> Arduino Mega 2560 / Teensy 4.1 / Waifuduino
+  MotorRight_R_EN - 22 - Teensy 4.1 pin 6 - 3
+  MotorRight_L_EN - 23 - Teensy 4.1 pin 7 - 4
+  MotorLeft_R_EN - 24 - Teensy 4.1 pin 8 - 12
+  MotorLeft_L_EN - 25 - Teensy 4.1 pin 9 - 13
+  Rpwm1 - 2 - Teensy 4.1 pin 2 - 5
+  Lpwm1 - 3 - Teensy 4.1 pin 3 - 6
+  Rpwm2 - 4 - Teensy 4.1 pin 4 - 10
+  Lpwm2 - 5 - Teensy 4.1 pin 5 - 11
 
-  FlySky FS 2.4GHz Receiver -> Arduino Mega 2560 / Teensy 4.1
-  ch2 - 7 // Aileron  - Teensy 4.1 pin 36
-  ch3 - 8 // Elevator  - Teensy 4.1 pin 37
+  ​FlySky FS 2.4GHz Receiver -> Arduino Mega 2560 / Teensy 4.1 / Waifuduino
+  ch2 - 7 // Aileron  - Teensy 4.1 pin 36 - 8
+  ch3 - 8 // Elevator  - Teensy 4.1 pin 37 - 9
 */
 
 /*Defining the upper and lower threshold in order for the motor to start moving*/
@@ -21,17 +21,36 @@
 #define LOWER_STOP_RANGE_TURN -20
 #define UPPER_STOP_RANGE_TURN 20
 
+#define HazardLight 11 // pin number where the neopixel strip is connected
+#define HeadLight 12
+#define NUMPIXELS 6
+#define CALIBRATIONTIME 20000
+
+#include <Adafruit_NeoPixel.h>
+unsigned long pixelsInterval = 50; // the time we need to wait
+unsigned long theaterChasePreviousMillis = 0;
+unsigned long colorWipePreviousMillis = 0;
+uint16_t currentPixel = 0;// what pixel are we operating on
+int theaterChaseQ = 0;
+int theaterChaseRainbowQ = 0;
+// create a neopixel strip object
+Adafruit_NeoPixel strip(NUMPIXELS, HazardLight, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip2(NUMPIXELS, HeadLight, NEO_GRB + NEO_KHZ800);
+
+#include <Servo.h>
+Servo servoMotor;
+
 /*BTS7960 Motor Driver Carrier*/
-const int MotorRight_R_EN = 6;
-const int MotorRight_L_EN = 7;
+const int MotorRight_R_EN = 22;
+const int MotorRight_L_EN = 23;
 
-const int MotorLeft_R_EN = 8;
-const int MotorLeft_L_EN = 9;
+const int MotorLeft_R_EN = 24;
+const int MotorLeft_L_EN = 25;
 
-const int Rpwm1 = 2;
-const int Lpwm1 = 3;
-const int Rpwm2 = 4;
-const int Lpwm2 = 5;
+const int Rpwm1 = 3;
+const int Lpwm1 = 2;
+const int Rpwm2 = 5;
+const int Lpwm2 = 4;
 
 long pwmLvalue = 255;
 long pwmRvalue = 255;
@@ -40,27 +59,23 @@ int robotControlState;
 int last_mspeed;
 boolean stop_state = true;
 
-const int Redlight1 = 30;
-const int Redlight2 = 31;
-const int light1 = 28;
-const int light2 = 29;
-int ledState = LOW;
-unsigned long previousMillis = 0;
-const long interval = 1000;
-
 // MODE2
-int ch2; // Aileron
-int ch3; // Elevator
-int ch4; // Rudder
+const int Elevator = 6; // Elevator input pin on the Arduino
+const int Aileron = 7; // Aileron input pin on the Arduino
+const int Rudder = 8; // Rudder input pin on the Arduino
 
 int moveValue;
 int turnValue;
 
 void setup() {
-  pinMode(18, INPUT);
-  pinMode(36, INPUT);
-  pinMode(37, INPUT);
-  Serial.begin(9600);
+  Serial.begin(115200);
+  currentPixel = 0;
+  strip.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
+  strip2.begin();
+  strip.show(); // Turn OFF all pixels ASAP
+  strip2.show();
+  strip.setBrightness(255); // Set BRIGHTNESS to about 1/5 (max = 255)
+  strip2.setBrightness(255);
 
   //Setup Right Motors
   pinMode(MotorRight_R_EN, OUTPUT); //Initiates Motor Channel A1 pin
@@ -70,41 +85,33 @@ void setup() {
   pinMode(MotorLeft_R_EN, OUTPUT); //Initiates Motor Channel B1 pin
   pinMode(MotorLeft_L_EN, OUTPUT); //Initiates Motor Channel B2 pin
 
-  pinMode(Redlight1, OUTPUT);
-  pinMode(Redlight2, OUTPUT);
-  pinMode(light1, OUTPUT);
-  pinMode(light2, OUTPUT);
-
   //Setup PWM pins as Outputs
   pinMode(Rpwm1, OUTPUT);
   pinMode(Lpwm1, OUTPUT);
   pinMode(Rpwm2, OUTPUT);
   pinMode(Lpwm2, OUTPUT);
 
+  servoMotor.attach(9); // attach servo to pin 9
   stop_Robot();
 }
 
 void loop() {
-
-  ch2 = pulseIn(36, HIGH, 25000);
-  ch3 = pulseIn(37, HIGH, 25000);
+  // read the pulse width of the input signal
+  int pulseWidthElv = pulseIn(Elevator, HIGH, 25000);
+  int pulseWidthAil = pulseIn(Aileron, HIGH, 25000);
+  int pulseWidthRud = pulseIn(Rudder, HIGH, 25000); // read PWM signal from pin 8 with a timeout of 25ms
 
   //Defining movement speed
-  moveValue = map(ch3, 980, 1999, -255, 255); // Convert the raw signal range of the receiver into [-255,255]
+  moveValue = map(pulseWidthElv, 1119, 1870, -255, 255); // Convert the raw signal range of the receiver into [-255,255]
   moveValue = constrain(moveValue, -255, 255); // Change the number from 20 to 255 to change speed
   Serial.print("Move Value: ");
   Serial.print(moveValue);
 
-//Defining turning speed
-  turnValue = map(ch2, 980, 1999, -255, 255); // Convert the raw signal range of the receiver into [-255,255]
-  turnValue = constrain(turnValue, -100, 100); // Change the number from 20 to 255 to change speed
+  //Defining turning speed
+  turnValue = map(pulseWidthAil, 1119, 1870, -255, 255); // Convert the raw signal range of the receiver into [-255,255]
+  turnValue = constrain(turnValue, -255, 255); // Change the number from 20 to 255 to change speed
   Serial.print("  Turn Value: ");
   Serial.println(turnValue);
-
-
-  TailLightControl();
-  digitalWrite(light1, HIGH);
-  digitalWrite(light2, HIGH);
 
   //Serial.println("moveValue: "+String(moveValue)+ ", turnValue: "+String(turnValue));
   if (moveValue > LOWER_STOP_RANGE_MOVE && moveValue < UPPER_STOP_RANGE_MOVE && turnValue > LOWER_STOP_RANGE_TURN && turnValue < UPPER_STOP_RANGE_TURN) {
@@ -142,8 +149,41 @@ void loop() {
       Serial.println("Turn Left");
     }
   }
-  delay(200);
 
+  ///////NEOPIXEL//////
+  if ((unsigned long)(millis() - theaterChasePreviousMillis) >= pixelsInterval) {
+    theaterChasePreviousMillis = millis();
+    theaterChase(strip.Color(255, 60, 0));
+  }
+  if ((unsigned long)(millis() - colorWipePreviousMillis) >= pixelsInterval) {
+    colorWipePreviousMillis = millis();
+    colorWipe(strip2.Color(125, 125, 100));
+  }
+}
+
+
+
+//Theatre-style crawling lights.
+void theaterChase(uint32_t c) {
+  for (int i = 0; i < strip.numPixels(); i = i + 3) {
+    strip.setPixelColor(i + theaterChaseQ, c);  //turn every third pixel on
+  }
+  strip.show();
+  for (int i = 0; i < strip.numPixels(); i = i + 3) {
+    strip.setPixelColor(i + theaterChaseQ, 0);      //turn every third pixel off
+  }
+  theaterChaseQ++;
+  if (theaterChaseQ >= 3) theaterChaseQ = 0;
+}
+
+// Fill the dots one after the other with a color
+void colorWipe(uint32_t c) {
+  strip2.setPixelColor(currentPixel, c);
+  strip2.show();
+  currentPixel++;
+  if (currentPixel == NUMPIXELS) {
+    currentPixel = 0;
+  }
 }
 
 void stop_Robot() { // robotControlState = 0
@@ -205,6 +245,7 @@ void go_Backwad(int mspeed) { // robotControlState = 4
   }
 }// void goBackwad(int mspeed)
 
+/*
 void move_RightForward(int mspeed) { // robotControlState = 5
   if (robotControlState != 5 || last_mspeed != mspeed) {
     SetMotors(1);
@@ -251,7 +292,7 @@ void move_LeftBackward(int mspeed) { // robotControlState = 8
     robotControlState = 8;
     last_mspeed = mspeed;
   }
-}// void move_LeftBackward(int mspeed)
+}// void move_LeftBackward(int mspeed)*/
 
 void stopRobot(int delay_ms) {
   SetMotors(2);
@@ -295,18 +336,3 @@ void SetMotors(int controlCase) {
       break;
   }
 }// void SetMotors(int controlCase)
-
-void TailLightControl() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    if (ledState == LOW ) {
-      ledState = HIGH;
-    } else {
-      ledState = LOW;
-    }
-
-    digitalWrite(Redlight1, ledState);
-    digitalWrite(Redlight2, ledState);
-  }
-}
