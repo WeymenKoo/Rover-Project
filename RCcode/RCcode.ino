@@ -97,9 +97,9 @@ void setup() {
 
 void loop() {
   // read the pulse width of the input signal
-  int pulseWidthElv = pulseIn(Elevator, HIGH, 25000);
-  int pulseWidthAil = pulseIn(Aileron, HIGH, 25000);
-  int pulseWidthRud = pulseIn(Rudder, HIGH, 25000); // read PWM signal from pin 8 with a timeout of 25ms
+  int pulseWidthElv = pulseIn(Elevator, HIGH);
+  int pulseWidthAil = pulseIn(Aileron, HIGH);
+  int pulseWidthRud = pulseIn(Rudder, HIGH); // read PWM signal from pin 8 with a timeout of 25ms
 
   //Defining movement speed
   moveValue = map(pulseWidthElv, 1119, 1870, -255, 255); // Convert the raw signal range of the receiver into [-255,255]
